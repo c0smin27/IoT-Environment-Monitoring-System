@@ -1,0 +1,511 @@
+{% load static %}
+{% load tz %}
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Sensor Data Dashboard</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                margin: 0;
+                background: #f2f2f2;
+            }
+            h1 {
+                margin-top: 30px;
+                color: #2c2c2c;
+                font-size: 2.5rem;
+                text-align: center;
+                letter-spacing: 1px;
+            }
+            .chart-container {
+                max-width: 810px;
+                margin: 0 auto 40px auto;
+                padding: 20px;
+                background: #fafbfc;
+                border-radius: 16px;
+            }
+            .section {
+                background: white;
+                max-width: 820px;
+                margin: 40px auto 0 auto;
+                border-radius: 20px;
+                box-shadow: 0 8px 24px rgba(44,44,44,0.10);
+                padding: 40px 30px 30px 30px;
+                text-align: center;
+            }
+            #sensor-table {
+                margin: 0 auto;
+                width: 100%;
+                max-width: 800px;
+                border-collapse: collapse;
+                background: #fafbfc;
+                border-radius: 12px;
+                box-shadow: 0 1px 6px rgba(44,44,44,0.10);
+                overflow: hidden;
+            }
+            #sensor-table thead {
+                background: #2c2c2c;
+                color: #fff;
+                font-size: 1.04rem;
+            }
+            #sensor-table th, #sensor-table td {
+                padding: 10px 18px;
+                text-align: center;
+                border-bottom: 1px solid #e6e6e6;
+            }
+            #sensor-table tbody tr:hover {
+                background: #eaeaea;
+            }
+            #load-more {
+                margin-top:18px;
+                padding:10px 28px;
+                border-radius:12px;
+                background:#2c2c2c;
+                color:white;
+                font-size:1.08rem;
+                border:none;
+                cursor:pointer;
+            }
+            @media (max-width: 900px) {
+                .section, .chart-container { padding: 10px; }
+                #sensor-table th, #sensor-table td { padding: 5px 6px; }
+            }
+            #scroll-btn {
+                position: fixed;
+                right: 28px;
+                bottom: 28px;
+                width: 52px;
+                height: 52px;
+                border-radius: 50%;
+                background: #2c2c2c;
+                color: white;
+                border: none;
+                box-shadow: 0 2px 8px rgba(44,44,44,0.18);
+                font-size: 2rem;
+                display: none;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                z-index: 99;
+                transition: background 0.2s, transform 0.2s;
+            }
+            #scroll-btn:hover {
+                background: #444;
+                transform: scale(1.08);
+            }
+            #voc-interpretation {
+                font-size: 1.2rem;
+                margin-top: 10px;
+                padding: 16px;
+                border-radius: 12px;
+                font-weight: bold;
+                transition: background 0.4s ease;
+            }
+            .voc-excellent {
+                background-color: #d4edda;
+                color: #155724;
+                border: 1px solid #c3e6cb;
+            }
+            .voc-light {
+                background-color: #fff3cd;
+                color: #856404;
+                border: 1px solid #ffeeba;
+            }
+            .voc-moderate {
+                background-color: #ffe0b3;
+                color: #7c4800;
+                border: 1px solid #ffc107;
+            }
+            .voc-danger {
+                background-color: #f8d7da;
+                color: #721c24;
+                border: 1px solid #f5c6cb;
+            }
+            #export-csv {
+                margin-top: 10px;
+                margin-left: 10px;
+                padding: 10px 28px;
+                border-radius: 12px;
+                background: #006adb;
+                color: white;
+                font-size: 1.08rem;
+                border: none;
+                cursor: pointer;
+                transition: background-color 0.2s ease;
+            }
+            #load-more:hover {
+                background-color: #1e1e1e;
+                transition: background-color 0.2s ease;
+            }
+            #export-csv:hover {
+                background-color: #005bb8;
+                transition: background-color 0.2s ease;
+            }
+            .voc-critical-alert {
+                border: 2px solid red !important;
+                animation: pulse-red 1s infinite alternate;
+            }
+            @keyframes pulse-red {
+                0% { box-shadow: 0 0 4px red; }
+                100% { box-shadow: 0 0 12px red; }
+            }
+            #esp-status {
+                font-weight: bold;
+                text-align: center;
+                margin-bottom: 20px;
+            }
+            .highlight-row {
+                animation: highlightFade 1.5s ease-in-out forwards;
+            }
+            @keyframes highlightFade {
+                0% { background-color: #e0f7fa; }
+                100% { background-color: transparent; }
+            }
+            </style>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h1>Sensor Data Dashboard</h1>
+    <!-- DIV STATUS ESP32 -->
+     <div id="esp-status" style="font-size: 1.1rem; color: #2c2c2c;">
+        Checking ESP32 status...
+     </div>
+    <!-- DIV GRAFIC -->
+    <div class="section chart-container">
+        <h2>Temperature, Humidity & VOC Index Chart</h2>
+        <canvas id="sensorChart" height="100"></canvas>
+    </div>
+    <!-- DIV INTERPRETARE VOC -->
+     <div class="section">
+        <h2>VOC Air Quality Interpretation</h2>
+        <p id="voc-interpretation" style="font-size: 1.2rem; margin-top: 10px; color: #333;"></p>
+        <p id="voc-alert" style="margin-top: 8px; font-weight: normal;"></p>
+     </div>
+    <!-- DIV TABEL INREGISTRARI -->
+    <div class="section">
+        <h2>Sensor Data Table</h2>
+        <table id="sensor-table">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Temperature (°C)</th>
+                    <th>Humidity (%)</th>
+                    <th>VOC Index</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                <!-- randuri generate din JS -->
+            </tbody>
+        </table>
+        <button id="load-more">Load More</button>
+        <button id="export-csv">Export CSV</button>
+    </div>
+
+    <button id="scroll-btn" title="Scroll"><span id="arrow">&#8595;</span></button>
+    
+    <script>
+        const ROWS_PER_PAGE = 20;
+        let loadedRows = ROWS_PER_PAGE;
+        let sensorChart = null;
+        let lastDataTime = null; // ultima data cand au fost primite date pentru status ESP32
+
+        let fullSensorData = [
+            {% for row in data %}
+            {
+                id: {{ row.id }},
+                timestamp: "{{ row.timestamp|localtime|date:'Y-m-d H:i' }}",
+                temperature: {{ row.temperature }},
+                humidity: {{ row.humidity }},
+                voc_index: {{ row.voc_index }}
+            },
+            {% endfor %}
+        ];
+
+        // se taie array-ul la primele loadedRows
+        let sensorData = fullSensorData.slice(0, loadedRows);
+
+        // transformare timestamp ISO 8601 -> YYYY-MM-DD HH:MM
+        function formatTimestamp(isoString) {
+            const date = new Date(isoString); // creare obiect Date din string-ul ISO
+            const year = date.getFullYear(); // extragere an
+            const month = String(date.getMonth() + 1).padStart(2, '0'); // luna
+            const day = String(date.getDate()).padStart(2, '0'); // ziua
+            const hours = String(date.getHours()).padStart(2, '0'); // ora
+            const minutes = String(date.getMinutes()).padStart(2, '0'); // minute
+            return `${year}-${month}-${day} ${hours}:${minutes}`; // format final: YYYY-MM-DD HH:MM
+        }
+
+        // functie pentru interpretarea valorilor VOC
+        function interpretVOC(value) {
+            if (value <= 100) return { level: "voc-excellent", text: "Excellent" };
+            if (value <= 200) return { level: "voc-light", text: "Lightly polluted" };
+            if (value <= 300) return { level: "voc-moderate", text: "Moderately polluted" };
+            return { level: "voc-danger", text: "Heavily polluted" };
+        }
+
+        // initializare tabel si grafic
+        function renderRowsAndChart() {
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = ""; // se rescrie tabelul cu toate randurile incarcate
+
+            for(let i = 0; i < sensorData.length; i++) {
+                const row = sensorData[i];
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${formatTimestamp(row.timestamp)}</td><td>${row.temperature}</td><td>${row.humidity}</td><td>${row.voc_index}</td>`;
+                if (i === 0 && Date.now() - lastDataTime < 2000) {
+                    requestAnimationFrame(() => {
+                        tr.classList.add("highlight-row");
+                    });
+                }
+                tbody.appendChild(tr);
+
+                // actualizare interpretare VOC
+                const vocDiv = document.getElementById('voc-interpretation');
+                const vocAlert = document.getElementById('voc-alert');
+
+                if (sensorData.length > 0) {
+
+                    const latestVOC = sensorData[0].voc_index;
+                    const interpretation = interpretVOC(latestVOC);
+
+                    // eliminare clase vechi
+                    vocDiv.classList.remove("voc-excellent", "voc-light", "voc-moderate", "voc-danger");
+                    // se adauga clasele corespunzatoare
+                    vocDiv.classList.add(interpretation.level);
+
+                    // actualizare text
+                    vocDiv.innerHTML = `Last VOC value: <strong>${latestVOC}</strong><br>Interpretation: <strong>${interpretation.text}</strong>`;
+
+                    // alerta VOC
+                    if (latestVOC > 300) {
+                        vocDiv.classList.add("voc-critical-alert");
+                        vocAlert.innerText = "Warning: VOC Index is dangerously high!";
+                        vocAlert.style.color = "red";
+                    } else {
+                        vocDiv.classList.remove("voc-critical-alert");
+                        vocAlert.innerText = "";
+                        vocAlert.style.color = "";
+                    }
+                }
+            }
+
+            // actualizare grafic
+            const dataToShow = sensorData.slice(0, loadedRows).reverse();
+            const labels = dataToShow.map(d => formatTimestamp(d.timestamp));
+            const tempData = dataToShow.map(d => d.temperature);
+            const humData = dataToShow.map(d => d.humidity);
+            const vocData = dataToShow.map(d => d.voc_index);
+
+            const ctx = document.getElementById('sensorChart').getContext('2d');
+
+            if (!sensorChart) {
+                sensorChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Temperature (°C)',
+                                data: tempData,
+                                borderColor: 'rgba(255, 99, 132, 0.8)',
+                                backgroundColor: 'rgba(255,99,132,0.09)',
+                                borderWidth: 2,
+                                yAxisID: 'y',
+                                tension: 0.2,
+                                pointRadius: 4,
+                                pointHoverRadius: 7,
+                            },
+                            {
+                                label: 'Humidity (%)',
+                                data: humData,
+                                borderColor: 'rgba(54, 162, 235, 0.8)',
+                                backgroundColor: 'rgba(54,162,235,0.09)',
+                                borderWidth: 2,
+                                yAxisID: 'y1',
+                                tension: 0.2,
+                                pointRadius: 4,
+                                pointHoverRadius: 7,
+                            },
+                            {
+                                label: 'VOC Index',
+                                data: vocData,
+                                borderColor: 'rgba(255, 153, 51, 0.8)',
+                                backgroundColor: 'rgba(255,153,51,0.09)',
+                                borderWidth: 2,
+                                yAxisID: 'y2',
+                                tension: 0.2,
+                                pointRadius: 4,
+                                pointHoverRadius: 7,
+                                pointStyle: 'rect'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        interaction: { mode: 'index', intersect: false },
+                        stacked: false,
+                        plugins: {
+                            legend: { labels: { color: '#2c2c2c', font: { size: 14 } } },
+                            title: { display: false }
+                        },
+                        scales: {
+                            x: { ticks: { color: '#2c2c2c' } },
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: { display: true, text: 'Temperature (°C)', color: '#2c2c2c' },
+                                ticks: { color: '#2c2c2c' }
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                title: { display: true, text: 'Humidity (%)', color: '#2c2c2c' },
+                                grid: { drawOnChartArea: false },
+                                ticks: { color: '#2c2c2c' }
+                            },
+                            y2: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                title: { display: true, text: 'VOC Index', color: '#FF9933' },
+                                grid: { drawOnChartArea: false },
+                                offset: true,
+                                ticks: { color: '#FF9933' }
+                            }
+                        }
+                    }
+                });
+            } else {
+                // actualizare date
+                sensorChart.data.labels = labels;
+                sensorChart.data.datasets[0].data = tempData;
+                sensorChart.data.datasets[1].data = humData;
+                sensorChart.data.datasets[2].data = vocData;
+                sensorChart.update();
+            }
+        }
+        // initial
+        renderRowsAndChart();
+
+        // buton "load more"
+        document.getElementById('load-more').addEventListener('click', function() {
+            loadedRows += ROWS_PER_PAGE;
+            sensorData = fullSensorData.slice(0, loadedRows);
+            renderRowsAndChart();
+        });
+
+        // buton scroll
+        const scrollBtn = document.getElementById('scroll-btn');
+        const arrow = document.getElementById('arrow');
+
+        function updateScrollBtn() {
+            if (window.scrollY < 200) {
+                scrollBtn.style.display = 'flex';
+                arrow.innerHTML = '&#8595;'; // sageata jos
+                scrollBtn.onclick = () => window.scrollTo({ top: document.body.scrollHeight,        behavior: 'smooth' });
+            } else {
+                scrollBtn.style.display = 'flex';
+                arrow.innerHTML = '&#8593;'; // sageata sus
+                scrollBtn.onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+        window.addEventListener('scroll', updateScrollBtn);
+
+        // ascundere buton scroll
+        window.addEventListener('load', function() {
+            if (document.body.scrollHeight <= window.innerHeight + 40) {
+                scrollBtn.style.display = 'none';
+            } else {
+                updateScrollBtn();
+            }
+        });
+
+        // AJAX Polling pentru actualizare automata
+        let lastId = sensorData.length > 0 ? sensorData[0].id : 0;
+
+        function fetchNewData() {
+            fetch(`/api/get_new_data/?last_id=${lastId}`)
+                .then(response => response.json())
+                .then(result => {
+                    const newData = result.data;
+                    if (newData.length > 0) {
+                        lastDataTime = Date.now();
+                        // adaugare in fata listei
+                        fullSensorData.unshift(...newData.reverse());
+                        lastId = fullSensorData[0].id;
+                        sensorData = fullSensorData.slice(0, loadedRows);
+                        // actualizare tabel si grafic
+                        renderRowsAndChart();
+                    }
+                })
+                .catch(error => {
+                    console.error("Eroare la fetch:", error);
+                });
+        }
+        // AJAX Polling la fiecare 5 sec
+        setInterval(fetchNewData, 5000);
+
+        // actualizare stare ESP32
+        function updateESPStatus() {
+            const now = Date.now();
+            const statusDiv = document.getElementById("esp-status");
+
+            if (lastDataTime === null) {
+                statusDiv.textContent = "ESP32 Status: Offline";
+                statusDiv.style.color = "#dc3545";
+                return;
+            }
+
+            const elapsed = now - lastDataTime;
+            if (elapsed <= 15000) {
+                statusDiv.textContent = "ESP32 Status: Online";
+                statusDiv.style.color = "#28a745";
+            } else {
+                statusDiv.textContent = "ESP32 Status: Offline";
+                statusDiv.style.color = "#dc3545";
+            }
+        }
+        // verificare status la fiecare 5 sec
+        setInterval(updateESPStatus, 5000);
+
+        // functie export date in format CSV
+        function exportToCSV(dataArray) {
+            if (!dataArray.length) return;
+
+            const csvHeaders = ["Timestamp", "Temperature (C)", "Humidity (%)", "VOC Index"];
+            
+            const csvRows = dataArray.map(row => [
+                formatTimestamp(row.timestamp),
+                row.temperature.toString().replace(".", ","),
+                row.humidity.toString().replace(".", ","),
+                row.voc_index
+            ]);
+
+            const csvContent = [
+                csvHeaders.join(";"), 
+                ...csvRows.map(row => row.join(";"))
+            ].join("\n");
+
+            const blob = new Blob([csvContent], { type: "text/csv;charset=windows-1252;" });
+            const url = URL.createObjectURL(blob);
+
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", "sensor_data.csv");
+            link.style.display = "none";
+
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        document.getElementById('export-csv').addEventListener('click', function () {
+            exportToCSV(fullSensorData);
+        });
+    </script>
+</body>
+</html>
